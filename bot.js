@@ -361,15 +361,15 @@ function assignRoles(channelID, message) {
         player.setRole(minRoles[i]);
         var messageContent = "";
         if (player.role == "seer") {
-            messageContent = "You are a seer! Use the seer channel to reveal a player's identity once per round.";
+            messageContent = "```You are a seer! Use the seer channel to reveal a player's identity once per round.```";
             bot.addToRole({"serverID": "701486922798989312", "userID": player.userID, "roleID": seerRoleID});
         } else if (player.role == "werewolf") {
             werewolves.push(player);
             werewolvesString += (" " + player.user + " ");
-            messageContent = "You are a werewolf! Use the werewolves channel to talk to the other werewolves.";
+            messageContent = "```You are a werewolf! Use the werewolves channel to talk to the other werewolves.```";
             bot.addToRole({"serverID": "701486922798989312", "userID": player.userID, "roleID": werewolfRoleID});
         } else {
-            messageContent = "You are a villager!";
+            messageContent = "```You are a villager!```";
         }
         bot.sendMessage({
             to: player.userID,
