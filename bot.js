@@ -6,7 +6,6 @@ var auth = require('./auth.json');
 // Game State
 let MINIMUM_NUM_PLAYERS = 6; 
 var players = [];
-var werewolves = [];
 var seers = [];
 var minRoles = ["werewolf", "werewolf", "seer", "villager", "villager", "villager"];
 var gameActive = false;
@@ -23,6 +22,9 @@ let villagersTurn = false;
 let killVotes = [];
 let lynchVotes = [];
 let newDead = [];
+var seer = null;
+var day = false;
+var firstNightRound = false;
 const allEqual = arr => arr.every( v => v === arr[0] )
 
 // Configure logger settings
@@ -83,10 +85,6 @@ bot.on('message', function (user, userID, channelID, message, evt) {
                 if (channelID == mainChannelID) {
                     if (players.length >= MINIMUM_NUM_PLAYERS) { // change MINIMUM_NUM_PLAYERS back to 5 later
                         if (!gameActive) {
-                            /*bot.sendMessage({
-                                to: channelID,
-                                message: "```Starting game!```"
-                            });*/
                             startGame(channelID, message);
                         } else {
                             bot.sendMessage({
@@ -97,90 +95,18 @@ bot.on('message', function (user, userID, channelID, message, evt) {
                     } else {
                         bot.sendMessage({
                             to: channelID,
-                            message: "```You need 5+ players to play werewolves.```\n"
+                            message: "```You need 6+ players to play werewolves.```\n"
                         });                    
                     }
                 }
                 break;
             case 'reset':
-                if (channelID == mainChannelID) {               
-                    reset();
-                }
+                if (channelID == mainChannelID) reset();
                 break;
             case 'kill': // werewolves, werewolves have to agree 
                 if (channelID == werewolvesChannelID) {
-
-                    if (!werewolvesTurn) {
-                        bot.sendMessage({
-                            to: werewolvesChannelID,
-                            message: "```You can't vote right now.```\n"
-                        });    
-                        break;                         
-                    }
-
-                    var playerName = args[0];
                     var werewolf = findPlayerByName(user); 
-
-                    if (!werewolf.votedKill) { // this werewolf hasn't voted yet
-                        if (user.toLowerCase() == playerName.toLowerCase()) { // check to make sure not voting for themselves 
-                            bot.sendMessage({
-                                to: werewolvesChannelID,
-                                message: "```"+ werewolf.user + ", you can't vote for yourself.```\n"
-                            });     
-                            break;                      
-                        } else {
-                            var player = findPlayerByName(playerName);
-                            if (player) {
-                                if ((player.role == "werewolf") || (!player.alive)) {
-                                    bot.sendMessage({
-                                        to: werewolvesChannelID,
-                                        message: "```"+ werewolf.user + ", you must choose a player that is alive, and not a werewolf.```\n"
-                                    });                                   
-                                } else {
-                                    killVotes.push(player)
-                                    werewolf.votedKill = true;
-                                    if (killVotes.length == numberOfActiveWerewolves()) {
-                                        if (allEqual(killVotes)) {
-                                            bot.sendMessage({
-                                                to: werewolvesChannelID,
-                                                message: "```You have decided to kill: " + player.user + ".```\n"
-                                            }); 
-                                            player.alive = false;
-                                            werewolvesTurn = false;
-                                            newDead.push(player);
-                                            if (!seerTurn && !werewolvesTurn) {
-                                                newDay();
-                                            }  
-                                        } else {
-                                            werewolfRevote();
-                                            bot.sendMessage({
-                                                to: werewolvesChannelID,
-                                                message: "```You did not come to a unanimous decision, please revote.```\n"
-                                            }); 
-                                        }
-                                    }
-                                }
-                            } else { // probably tryped player name wrong
-                                bot.sendMessage({
-                                    to: werewolvesChannelID,
-                                    message: "```"+ werewolf.user + ", the player whose name you typed can't be found.```\n"
-                                });                                 
-                            }
-                            break;
-                        }
-                    } else if (!werewolf.alive) {
-                        bot.sendMessage({
-                            to: werewolvesChannelID,
-                            message: "```"+ werewolf.user + ", you are dead. You can't vote.```\n"
-                        });   
-                    }
-                    else {
-                        bot.sendMessage({
-                            to: werewolvesChannelID,
-                            message: "```"+ werewolf.user + ", you have already voted.```\n"
-                        });                             
-                    }              
-                    
+                    werewolf.kill(args[0]);              
                 } else {
                     bot.sendMessage({
                         to: channelID,
@@ -190,118 +116,16 @@ bot.on('message', function (user, userID, channelID, message, evt) {
                 break;
             case 'lynch': // everyone gets to vote to lynch, majority wins
                 if (channelID == mainChannelID) { // lynch voting happens publicy
-                    var playerName = args[0];
-
-                    var player = findPlayerByName(user); 
-                    var playerVote = findPlayerByName(playerName); 
-                    if (!player.votedLynch) {
-                        if (user.toLowerCase() == playerName.toLowerCase()) {    
-                            bot.sendMessage({
-                                to: mainChannelID,
-                                message: "```"+ player.user + ", you can't vote for yourself.```\n"
-                            });  
-                        } else if (playerVote) {
-                            if (!playerVote.alive) {
-                                bot.sendMessage({
-                                    to: mainChannelID,
-                                    message: "```"+ player.user + ", you can't vote for a player that is already dead.```\n"
-                                });                                     
-                            } else {
-                                lynchVotes.push(playerVote);
-                                player.votedLynch = true;
-                                if (lynchVotes.length == numberOfLivingPlayers()) { // done voting to lynch
-                                    var playersToLynch = tallyVotes();
-                                    for (var i = 0; i < playersToLynch.length; i++) {
-                                        playersToLynch[i].alive = false;
-                                        bot.addToRole({"serverID": "701486922798989312", "userID": playersToLynch[i].userID, "roleID": deadPlayerRoleID});
-                                        bot.sendMessage({
-                                            to: mainChannelID,
-                                            message: "```" + playersToLynch[i].user + " is dead.```\n"
-                                        });                                             
-                                    }
-                                    villagersTurn = false;
-                                    if (!checkIfGameOver()) {
-                                        newNight();
-                                    }
-                                }
-                            }
-                        } else {
-                            bot.sendMessage({
-                                to: mainChannelID,
-                                message: "```"+ player.user + ", the name of the player you typed was not found.```\n"
-                            });                              
-                        }
-                } else if (!player.alive) {
-                        bot.sendMessage({
-                            to: mainChannelID,
-                            message: "```"+ player.user + ", you are dead. You can't vote.```\n"
-                        });                        
-                    }
-                else { // player voted & is alive
-                    bot.sendMessage({
-                        to: mainChannelID,
-                        message: "```"+ player.user + ", you have already voted.```\n"
-                    });                       
-                }
+                    var player = findPlayerByName(user);
+                    player.lynch(args[0]);
             }
                 break;
             case 'reveal': // seers
                 if (channelID == seersChannelID) {
                     // might need way to check if seer, but can do this with seer channel permissions i guess
 
-                    if (!seerTurn) {
-                        bot.sendMessage({
-                            to: seersChannelID,
-                            message: "```You have already revealed someone this round.```\n"
-                        });                          
-                        break;
-                    }
+                    seer.reveal(args[0]);
 
-                    if (!findPlayerByName(user).alive) {
-                        bot.sendMessage({
-                            to: seersChannelID,
-                            message: "```You are dead.```\n"
-                        });                          
-                        break;
-                    }
-
-                    var playerName = args[0];
-                    if (user.toLowerCase() == playerName.toLowerCase()) {
-                        bot.sendMessage({
-                            to: seersChannelID,
-                            message: "```You can't choose yourself, pick another living player.```\n"
-                        });
-                        break;                         
-                    } else {
-                        var player = findPlayerByName(playerName); 
-                        if (player) {
-                            if (player.alive) {
-                                bot.sendMessage({
-                                    to: seersChannelID,
-                                    message: "```" + player.user + " is a " + player.role + ".```\n"
-                                });
-                                seerTurn = false;
-                                if (!seerTurn && !werewolvesTurn) {
-                                    if (!checkIfGameOver()) {
-                                        newDay();
-                                    }
-                                }                           
-                                break;                              
-                            } else {
-                                bot.sendMessage({
-                                    to: seersChannelID,
-                                    message: "```Please choose a living player.```\n"
-                                });  
-                                break;                              
-                            }
-                        } else {
-                            bot.sendMessage({
-                                to: seersChannelID,
-                                message: "```Player not found.```\n"
-                            });  
-                            break;
-                        }
-                    }
                 } else {
                     bot.sendMessage({
                         to: channelID,
@@ -355,20 +179,22 @@ function startGame(channelID, message) {
 }
 
 function assignRoles(channelID, message) {
-    let werewolvesString = "```The werewolves are: ";
     for (var i = 0; i < players.length; i++) {
         var player = players[i];
-        player.setRole(minRoles[i]);
+        var role = minRoles[i];
         var messageContent = "";
-        if (player.role == "seer") {
+        if (role == "seer") {
+            seer = new Seer(player.user, player.UserID);
+            players[i] = seer;
             messageContent = "```You are a seer! Use the seer channel to reveal a player's identity once per round.```";
             bot.addToRole({"serverID": "701486922798989312", "userID": player.userID, "roleID": seerRoleID});
-        } else if (player.role == "werewolf") {
-            werewolves.push(player);
-            werewolvesString += (" " + player.user + " ");
+        } else if (role == "werewolf") {
+            var werewolf = new Werewolf(player.user, player.UserID);
+            players[i] = werewolf;
             messageContent = "```You are a werewolf! Use the werewolves channel to talk to the other werewolves.```";
             bot.addToRole({"serverID": "701486922798989312", "userID": player.userID, "roleID": werewolfRoleID});
         } else {
+            player.role = "villager";
             messageContent = "```You are a villager!```";
         }
         bot.sendMessage({
@@ -377,19 +203,10 @@ function assignRoles(channelID, message) {
         });   
     }
 
-    werewolvesString += "\nUse the Werewolves channel to chat with them and kill someone once per round.```";
-    for (var w = 0; w < werewolves.length; w++) {
-        var werewolfPlayer = werewolves[w];
-        bot.sendMessage({
-            to: werewolfPlayer.userID,
-            message: werewolvesString
-        });          
-    }
-
     // remove eventually
     var testmessage = "CURRENT GAME STATE: \n";
     for (var i = 0; i < players.length; i++) {
-        testmessage += ("- " + players[i].user + " " + players[i].role);
+        testmessage += ("- " + players[i].user + " " + players[i].getRole() + " " + players[i].alive + " " + "\n");
     }
     logger.info(testmessage);
 
@@ -432,13 +249,9 @@ function reset() {
         bot.removeFromRole({"serverID": "701486922798989312", "userID": players[i].userID, "roleID": werewolfRoleID});
     }
 
-    bot.sendMessage({
-        to: mainChannelID,
-        message: '```Resetting game. You must all rejoin the game using !join and start when ready by typing !start.```'
-    });
-
     players = [];
     seers = [];
+    seer = null;
     werewolves = [];
     killVotes = [];
     lynchVotes = [];
@@ -446,77 +259,77 @@ function reset() {
     werewolvesTurn = false;
     villagersTurn = false;
     gameActive = false;
+
+    bot.sendMessage({
+        to: mainChannelID,
+        message: '```Reset game. You must all rejoin the game using !join and start when ready by typing !start.```'
+    });
 }
 
 function firstNight() {
-    seerTurn = true;
-    werewolvesTurn = false;
-    villagersTurn = false;   
+    day = false;
+    firstNightRound = true;
+    seer.votedReveal = false; // seer needs to vote now
 }
 
 function newNight() {
+    day = false;
+    firstNightRound = false;
+    killVotes = [];
+    newDead = [];
+
+    for (var i = 0; i < players.length; i++) { // the seer and werewolves get turns
+        var player = players[i];
+        if ((player.getRole() == "seer") && player.alive){
+            player.votedReveal = false;
+        } else if ((player.getRole() == "werewolf") && player.alive) {
+            player.votedKill = false;
+        } 
+    }
+
     bot.sendMessage({
         to: mainChannelID,
         message: "```It is now night.\nSeer, choose a player to reveal.\nWerewolves, choose a villager to kill.```\n"
     });   
 
-    seerTurn = true;
-    werewolvesTurn = true;
-    villagersTurn = false;
-    killVotes = [];
-
-    for (var w = 0; w < werewolves.length; w++) {
-        var werewolf = werewolves[w];
-        werewolf.votedKill = false;
-    }
-
-    for (var s = 0; s < seers.length; s++) {
-        var seer = seers[s];
-        //seer.votedKill = false;
-    }
-
-    newDead = [];
 }
 
 function newDay() {
-    seerTurn = false;
-    werewolvesTurn = false;
-    villagersTurn = false;    
-
+    day = true;
+    firstNightRound = false;
+    lynchVotes = [];
     var whoDiedMessage = "";
 
-    if (newDead.length == 0)
+    if (newDead.length == 0) {
         whoDiedMessage += "Nobody";
+    }
     else {
         for (var i = 0; i < newDead.length; i++) {
             var person = newDead[i];
+            person.alive = false;
             whoDiedMessage += (person.user + " ");
-            bot.addToRole({"serverID": "701486922798989312", "userID": newDead[i].userID, "roleID": deadPlayerRoleID});
+            bot.addToRole({"serverID": "701486922798989312", "userID": person.userID, "roleID": deadPlayerRoleID});
         }
     }
     whoDiedMessage += " died during the night.\n";
+    newDead = [];
 
     var voteInstructions = "It is now time to vote who to lynch. Type !lynch name_of_user_you_vote_for to cast your vote.```\n"
+
+    for (var v = 0; v < players.length; v++) { // all living players get to vote to lynch
+        var player = players[v];
+        player.votedLynch = false;
+    }
 
     bot.sendMessage({
         to: mainChannelID,
         message: "```It is a new day.\n" + whoDiedMessage + voteInstructions
-    });   
-
-    for (var v = 0; v < players.length; v++) {
-        var player = players[v];
-        player.votedLynch = false;
-        //seer.votedKill = false;
-    }
-
-    newDead = [];
-    lynchVotes = [];
-    villagersTurn = true; 
+    });  
 }
 
 function findPlayerByName(name) {
     for (var i = 0; i < players.length; i++) {
-        if (players[i].user.toLowerCase() == name.toLowerCase()) {
+        if (players[i].user == name) {
             return players[i];
         }
     }
@@ -525,10 +338,12 @@ function findPlayerByName(name) {
 
 function werewolfRevote() {
     killVotes = [];
-    for (var w = 0; w < werewolves.length; w++) {
-        var werewolf = werewolves[w];
-        werewolf.votedKill = false;
-    }
+    for (var v = 0; v < players.length; v++) {
+        var player = players[v];
+        if (player.getRole() == "werewolf" && player.alive) {
+            werewolf.votedKill = false;
+        }
+    }    
 }
 
 function villagersRevote() {
@@ -569,7 +384,7 @@ function numberOfActiveWerewolves() {
     var count = 0;  
     for (var i = 0; i < players.length; i++) {
         var player = players[i];
-        if ((player.role == "werewolf") && player.alive) {
+        if ((player.getRole() == "werewolf") && player.alive) {
             count += 1;
         }
     }
@@ -580,7 +395,7 @@ function numberOfActiveVillagers() {
     var count = 0;  
     for (var i = 0; i < players.length; i++) {
         var player = players[i];
-        if ((player.role != "werewolf") && player.alive) {
+        if ((player.getRole() != "werewolf") && player.alive) {
             count += 1;
         }
     }
@@ -609,15 +424,236 @@ function checkIfGameOver() {
     return false;
 }
 
-function Player(user, userID) {
-    this.user = user;
-    this.userID = userID;
-    this.role = null;
-    this.alive = true;
-    this.votedLynch = false;
-    this.votedKill = false;
+function werewolvesDoneVoting() {
+    var done = true;
+    for (var i = 0; i < players.length; i++) {
+        var player = players[i];
+        if ( (player.getRole() == "werewolf") && ( !player.alive || !player.votedKill ) ) {
+            done = false;
+        }
+    }
+    return done;
+}
 
-    this.setRole = function (role) {
-        this.role = role;
-    };
+
+/* Player Role Prototypes */
+class Player {
+    constructor(user, userID) {
+        this.user = user;
+        this.userID = userID;
+        this.alive = true;
+        this.votedLynch = false;
+        this.turn = false;
+        this.role = "villager";
+    }
+
+    getRole() {
+        return this.role;
+    }
+
+    lynch(playerChoice) {
+        var player = findPlayerByName(playerChoice);
+        if (!day) {
+            bot.sendMessage({
+                to: mainChannelID,
+                message: "```"+ this.user + ", you can't vote to lynch at night.```\n"
+            });              
+            return;
+        }
+
+        if (!this.alive) {
+            bot.sendMessage({
+                to: mainChannelID,
+                message: "```"+ this.user + ", you are dead. You can't vote.```\n"
+            });    
+            return;                    
+        }
+
+        if (!this.votedLynch) {
+            if (this.user == playerChoice) {    
+                bot.sendMessage({
+                    to: mainChannelID,
+                    message: "```"+ this.user + ", you can't vote for yourself.```\n"
+                });  
+            } else if (player) { // player was found and exists
+                if (!player.alive) {
+                    bot.sendMessage({
+                        to: mainChannelID,
+                        message: "```"+ this.user + ", you can't vote for a player that is already dead.```\n"
+                    });                                     
+                } else {
+                    this.votedLynch = true;
+                    lynchVotes.push(player);
+                    if (lynchVotes.length == numberOfLivingPlayers()) { // done voting to lynch
+                        var playersToLynch = tallyVotes();
+                        for (var i = 0; i < playersToLynch.length; i++) {
+                            var player = playersToLynch[i];
+                            player.alive = false;
+                            bot.addToRole({"serverID": "701486922798989312", "userID": player.userID, "roleID": deadPlayerRoleID});
+                            bot.sendMessage({
+                                to: mainChannelID,
+                                message: "```" + player.user + " is dead.```\n"
+                            });                                             
+                        }
+                        if (!checkIfGameOver()) {
+                            newNight();
+                        }
+                    }
+                }
+            } else {
+                bot.sendMessage({
+                    to: mainChannelID,
+                    message: "```"+ this.user + ", the name of the player you typed was not found.```\n"
+                });                              
+            }
+    } else { // this player voted & is alive
+        bot.sendMessage({
+            to: mainChannelID,
+            message: "```"+ this.user + ", you have already voted.```\n"
+        });                       
+    }
+    }
+}
+
+class Werewolf extends Player {
+    constructor(user, userID) {
+        super(user, userID);
+        this.votedLynch = false;
+        this.votedKill = false;
+        this.role = "werewolf";
+    }
+
+    kill(playerChoice) {
+        if (day || firstNightRound) {
+            bot.sendMessage({
+                to: werewolvesChannelID,
+                message: "```You can't vote right now.```\n"
+            });    
+            return;                         
+        }
+
+        if (!this.votedKill) { // this werewolf hasn't voted yet
+            if (this.user == playerChoice) { // check to make sure not voting for themselves 
+                bot.sendMessage({
+                    to: werewolvesChannelID,
+                    message: "```"+ this.user + ", you can't vote for yourself.```\n"
+                });     
+                return;                      
+            } else {
+                var player = findPlayerByName(playerChoice);
+                if (player) {
+                    if ((player.getRole() == "werewolf") || (!player.alive)) {
+                        bot.sendMessage({
+                            to: werewolvesChannelID,
+                            message: "```"+ this.user + ", you must choose a player that is alive, and not a werewolf.```\n"
+                        });                                   
+                    } else {
+                        killVotes.push(player)
+                        this.votedKill = true;
+                        if (werewolvesDoneVoting()) {
+                        //if (killVotes.length == numberOfActiveWerewolves()) {
+                            if (allEqual(killVotes)) {
+                                bot.sendMessage({
+                                    to: werewolvesChannelID,
+                                    message: "```You have decided to kill: " + player.user + ".```\n"
+                                }); 
+                                newDead.push(player);
+                                if (seer.votedReveal && werewolvesDoneVoting()) {
+                                    newDay();
+                                }  
+                            } else {
+                                werewolfRevote();
+                                bot.sendMessage({
+                                    to: werewolvesChannelID,
+                                    message: "```You did not come to a unanimous decision, please revote.```\n"
+                                }); 
+                            }
+                        }
+                    }
+                } else { // probably tryped player name wrong
+                    bot.sendMessage({
+                        to: werewolvesChannelID,
+                        message: "```"+ werewolf.user + ", the player whose name you typed can't be found.```\n"
+                    });                                 
+                }
+                return;
+            }
+        } else if (!werewolf.alive) {
+            bot.sendMessage({
+                to: werewolvesChannelID,
+                message: "```"+ werewolf.user + ", you are dead. You can't vote.```\n"
+            });   
+        }
+        else {
+            bot.sendMessage({
+                to: werewolvesChannelID,
+                message: "```"+ werewolf.user + ", you have already voted.```\n"
+            });                             
+        } 
+    }
+}
+
+class Seer extends Player {
+    constructor(user, userID) {
+        super(user, userID);
+        this.votedReveal = false;
+        this.votedLynch = false;
+        this.role = "seer";
+    }
+
+    reveal(playerChoice) {
+        if (day || this.votedReveal) { // check if it's the seer's turn
+            bot.sendMessage({
+                to: seersChannelID,
+                message: "```Seer, it is not your turn.```\n"
+            });                          
+            return;
+        }
+
+        //if (!findPlayerByName(user).alive) {
+        if (!this.alive) {
+            bot.sendMessage({
+                to: seersChannelID,
+                message: "```Seer, you are dead, you can't reveal anyone.```\n"
+            });                          
+            return;
+        }
+
+        if (this.user == playerChoice) {
+            bot.sendMessage({
+                to: seersChannelID,
+                message: "```You can't choose yourself, pick another living player.```\n"
+            });
+            return;                         
+        } else {
+            var player = findPlayerByName(playerChoice); 
+            if (player) {
+                if (player.alive) {
+                    bot.sendMessage({
+                        to: seersChannelID,
+                        message: "```" + player.user + " is a " + player.getRole() + ".```\n"
+                    });
+                    this.votedReveal = true;
+                    if (this.votedReveal && (werewolvesDoneVoting() || firstNightRound)) { //fix the werewolvesTurn variable, needs to check all werewolves' turns
+                        if (!checkIfGameOver()) {
+                            newDay();
+                        }
+                    }                           
+                    return;                              
+                } else {
+                    bot.sendMessage({
+                        to: seersChannelID,
+                        message: "```Please choose a living player.```\n"
+                    });  
+                    return;                              
+                }
+            } else {
+                bot.sendMessage({
+                    to: seersChannelID,
+                    message: "```Player not found.```\n"
+                });  
+                return;
+            }
+        }
+    }
 }
