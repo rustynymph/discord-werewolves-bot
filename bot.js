@@ -355,7 +355,7 @@ function startGame(channelID, message) {
 }
 
 function assignRoles(channelID, message) {
-    let werewolvesString = "The werewolves are: ";
+    let werewolvesString = "```The werewolves are: ";
     for (var i = 0; i < players.length; i++) {
         var player = players[i];
         player.setRole(minRoles[i]);
@@ -377,7 +377,7 @@ function assignRoles(channelID, message) {
         });   
     }
 
-    werewolvesString += "\nUse the Werewolves channel to chat with them and kill someone once per round.";
+    werewolvesString += "\nUse the Werewolves channel to chat with them and kill someone once per round.```";
     for (var w = 0; w < werewolves.length; w++) {
         var werewolfPlayer = werewolves[w];
         bot.sendMessage({
