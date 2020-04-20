@@ -43,6 +43,7 @@ var helpMessage = "HOW TO PLAY\n" +
                     "!reveal player_name   Use in #seers channel. Reveals a player's identity.\n" +
                     "!reset                End a game and reset everything.\n" +
                     "!help                 Use at any time to see the rules and commands.\n" +
+                    "!status               Use at any time to see who is dead and who is alive.\n" +
                     "* NOTE: Replace 'player_name' with the username of the player you want to perform the action on.\n\n"
 
 const allEqual = arr => arr.every( v => v === arr[0] )
@@ -81,6 +82,11 @@ bot.on('ready', function (evt) {
         to: mainChannelID,
         message: "```Welcome to Werewolf Bar Mitzfah!\n\n\n"+ helpMessage + "```\n"
     });     
+
+    /*logger.info(minRoles);
+    logger.info(shuffle(minRoles));
+    logger.info(shuffle(minRoles));
+    logger.info(shuffle(minRoles));*/
 
 });
 bot.on('message', function (user, userID, channelID, message, evt) {
@@ -128,6 +134,9 @@ bot.on('message', function (user, userID, channelID, message, evt) {
                         });                    
                     }
                 }
+                break;
+            case 'status':
+                generateStatusMessage(channelID);
                 break;
             case 'reset':
                 if (channelID == mainChannelID) reset();
@@ -225,6 +234,8 @@ function assignRoles(channelID, message) {
         var player = players[i];
         var role = minRoles[i];
         var messageContent = "";
+        var seerChannelMessage = "```Seer, use !reveal player_name once per night.```";
+        var werewolvesChannelMessage = "```Werewolves, use !kill player_name once per night.\nYou have to vote for the same person or you will have to revote.```";
         if (role == "seer") {
             seer = new Seer(player.user, player.UserID);
             players[i] = seer;
@@ -242,7 +253,7 @@ function assignRoles(channelID, message) {
         bot.sendMessage({
             to: player.userID,
             message: messageContent
-        });   
+        });    
     }
 
     // remove eventually
@@ -268,6 +279,14 @@ function assignRoles(channelID, message) {
                  "Right now, seer --- please use the #seers channel to reveal someone's identity with !reveal player_name." +
                  "```\n"
     });
+    bot.sendMessage({
+        to: seersChannelID,
+        message: seerChannelMessage
+    });   
+    bot.sendMessage({
+        to: werewolvesChannelID,
+        message: werewolvesChannelMessage
+    });  
     firstNight();
 }
 
@@ -469,7 +488,7 @@ function werewolvesDoneVoting() {
     var done = true;
     for (var i = 0; i < players.length; i++) {
         var player = players[i];
-        if ( (player.getRole() == "werewolf") && ( !player.alive || !player.votedKill ) ) {
+        if ( player.alive && (player.getRole() == "werewolf") && !player.votedKill ) {
             done = false;
         }
     }
@@ -766,5 +785,27 @@ function addRole(userID, roleID) {
         serverID: serverID,
         userID: userID,
         roleID: roleID
+    }, function(err){
+        console.log(err)
     });    
+}
+
+function generateStatusMessage(channelID) {
+    if (gameActive) {
+        var message = "```CURRENT GAME STATUS\n" + "===================\n";
+        for (var i = 0; i < players.length; i++) {
+            var player = players[i];
+            message += ("- " + player.user + " is " + (player.alive  ? 'alive' : 'dead') + "\n")
+        }
+        message += "```"
+        bot.sendMessage({
+            to: channelID,
+            message: message
+        });    
+    } else {
+        bot.sendMessage({
+            to: channelID,
+            message: "```There is no game active right now.\n```"
+        });          
+    }
 }
