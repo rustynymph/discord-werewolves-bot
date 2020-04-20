@@ -2,6 +2,7 @@
 var Discord = require('discord.io');
 var logger = require('winston');
 var auth = require('./auth.json');
+const request = require("request");
 
 // Game State
 let MINIMUM_NUM_PLAYERS = 6; 
@@ -12,10 +13,12 @@ var gameActive = false;
 let mainChannelID = null;
 let werewolvesChannelID = null;
 let seersChannelID = null;
-let playerRoleID = "701542068748681261";
-let seerRoleID = "701520972443942972";
-let werewolfRoleID = "701520797914759270";
-let deadPlayerRoleID = "701575182174912624";
+let playerRoleID = "";
+let seerRoleID = "";
+let werewolfRoleID = "";
+let deadPlayerRoleID = "";
+let everyoneRoleID = "";
+let serverID = "";
 let seerTurn = false;
 let werewolvesTurn = false;
 let villagersTurn = false;
@@ -42,6 +45,9 @@ bot.on('ready', function (evt) {
     logger.info('Connected');
     logger.info('Logged in as: ');
     logger.info(bot.username + ' - (' + bot.id + ')');
+
+    serverID = Object.keys(bot.servers)[0];
+    setRoleIDVariables();
 
     mainChannelID = "701486922798989315";
     var p = bot.channels;
@@ -73,7 +79,7 @@ bot.on('message', function (user, userID, channelID, message, evt) {
                 if (channelID == mainChannelID) {
                     if (!doesPlayerExist(userID)) {
                         players.push(new Player(user, userID));
-                        bot.addToRole({"serverID": "701486922798989312", "userID": userID, "roleID": playerRoleID});
+                        bot.addToRole({"serverID": serverID, "userID": userID, "roleID": playerRoleID});
                     }
                     bot.sendMessage({
                         to: channelID,
@@ -185,7 +191,7 @@ function clear() {
     var users = bot.users;
     for (var key in users) {
         if (users.hasOwnProperty(key)) {
-            resetDiscordRoles(users[key]["id"]);
+            removeRolesRequest(users[key]["id"]);
         }
     }
 }
@@ -199,12 +205,12 @@ function assignRoles(channelID, message) {
             seer = new Seer(player.user, player.UserID);
             players[i] = seer;
             messageContent = "```You are a seer! Use the seer channel to reveal a player's identity once per round.```";
-            bot.addToRole({"serverID": "701486922798989312", "userID": player.userID, "roleID": seerRoleID});
+            bot.addToRole({"serverID": serverID, "userID": player.userID, "roleID": seerRoleID});
         } else if (role == "werewolf") {
             var werewolf = new Werewolf(player.user, player.UserID);
             players[i] = werewolf;
             messageContent = "```You are a werewolf! Use the werewolves channel to talk to the other werewolves.```";
-            bot.addToRole({"serverID": "701486922798989312", "userID": player.userID, "roleID": werewolfRoleID});
+            bot.addToRole({"serverID": serverID, "userID": player.userID, "roleID": werewolfRoleID});
         } else {
             player.role = "villager";
             messageContent = "```You are a villager!```";
@@ -253,23 +259,11 @@ function shuffle(array) {
     return array;
   }
 
-function resetDiscordRoles(id) {
-    var roles = [playerRoleID, deadPlayerRoleID, seerRoleID, werewolfRoleID];
-    var serverid = "701486922798989312";
-    for (var i = 0; i < roles.length; i++) {
-        bot.removeFromRole({
-            serverID: serverid,
-            roleID: roles[i],
-            userID: id,
-        });
-    }
-}
-
 function reset() {
     var users = bot.users;
     for (var key in users) {
         if (users.hasOwnProperty(key)) {
-            resetDiscordRoles(users[key]["id"]);
+            removeRolesRequest(users[key]["id"]);
         }
     }
 
@@ -327,7 +321,7 @@ function newDay() {
             var person = newDead[i];
             person.alive = false;
             whoDiedMessage += (person.user + " ");
-            bot.addToRole({"serverID": "701486922798989312", "userID": person.userID, "roleID": deadPlayerRoleID});
+            bot.addToRole({"serverID": serverID, "userID": person.userID, "roleID": deadPlayerRoleID});
         }
     }
     whoDiedMessage += " died during the night.\n";
@@ -508,7 +502,7 @@ class Player {
                         for (var i = 0; i < playersToLynch.length; i++) {
                             var player = playersToLynch[i];
                             player.alive = false;
-                            bot.addToRole({"serverID": "701486922798989312", "userID": player.userID, "roleID": deadPlayerRoleID});
+                            bot.addToRole({"serverID": serverID, "userID": player.userID, "roleID": deadPlayerRoleID});
                             bot.sendMessage({
                                 to: mainChannelID,
                                 message: "```" + player.user + " is dead.```\n"
@@ -677,4 +671,39 @@ class Seer extends Player {
             }
         }
     }
+}
+
+function removeRolesRequest(id) {
+    request({
+        url: "https://discordapp.com/api/v6/guilds/"+ serverID +"/members/"+ id,
+        headers: {
+            "User-Agent": "DiscordBot (Custom API request, 1.0)",
+            "Authorization": "Bot "+ auth.token,
+            "Content-Type": "application/json"
+        },
+        method: "PATCH",
+        body: JSON.stringify({roles: [everyoneRoleID]})
+    }, function(error, response, body) {
+        // All done. response.statusCode should be 204 on success, 4XX or 5XX on failure.
+    });
+}
+
+function setRoleIDVariables() {
+    var roles = bot.servers[serverID].roles;
+    for (var key in roles) {
+        if (roles.hasOwnProperty(key)) {
+            var rolename = roles[key].name;
+            if (rolename == "Werewolf") 
+                werewolfRoleID = key;
+            else if (rolename == "Seer")
+                seerRoleID = key;
+            else if (rolename == "Player")
+                playerRoleID = key;
+            else if (rolename == "Dead")
+                deadPlayerRoleID = key;
+            else if (rolename == "@everyone")
+                everyoneRoleID = key;           
+        }
+    }
+
 }
