@@ -6,28 +6,43 @@ const request = require("request");
 
 // Game State
 let MINIMUM_NUM_PLAYERS = 6; 
-var players = [];
-var seers = [];
-var minRoles = ["werewolf", "werewolf", "seer", "villager", "villager", "villager"];
-var gameActive = false;
-let mainChannelID = null;
+var players             = [];
+var seers               = [];
+var minRoles            = ["werewolf", "werewolf", "seer", "villager", "villager", "villager"];
+var gameActive          = false;
+let mainChannelID       = null;
 let werewolvesChannelID = null;
-let seersChannelID = null;
-let playerRoleID = "";
-let seerRoleID = "";
-let werewolfRoleID = "";
-let deadPlayerRoleID = "";
-let everyoneRoleID = "";
-let serverID = "";
-let seerTurn = false;
-let werewolvesTurn = false;
-let villagersTurn = false;
-let killVotes = [];
-let lynchVotes = [];
-let newDead = [];
-var seer = null;
-var day = false;
-var firstNightRound = false;
+let seersChannelID      = null;
+let playerRoleID        = "";
+let seerRoleID          = "";
+let werewolfRoleID      = "";
+let deadPlayerRoleID    = "";
+let everyoneRoleID      = "";
+let serverID            = "";
+let killVotes           = [];
+let lynchVotes          = [];
+let newDead             = [];
+var seer                = null;
+var day                 = false;
+var firstNightRound     = false;
+
+var helpMessage = "HOW TO PLAY\n" +
+                    "===========\n" +
+                    "You need a minimum of 6 people to play. To join the game type each player must type !join.\nOnce you have 6 players joined, one person can start the game by typing !start.\nAt least 2 people are werewolves, 1 person is the seer, and the rest are villagers (the seer is on the villagers' team).\n" +
+                    "The seer has access to the #seers channel where they can use !reveal player_name once per round at night, and the werewolves have access to the #werewolves channel. At night the werewolves need to unanimously vote on who to kill using !kill player_name.\n" +
+                    "The game begins with a night phase and the seer gets to choose to reveal a player's identity. \n" +
+                    "During the day ALL villagers need to vote for who to lynch by typing !lynch player_name. The player with the highest number of votes gets lynched. If there is a tie, the players tied for the highest number of votes all get lynched.\n" +
+                    "During each night except the first one, the werewolves vote on who to kill.\n" +
+                    "The villagers win when all of the werewolves are dead. The werewolves win when the number of werewolves is equal to or exceeds the number of villagers.\n\n" +
+                    "LIST OF COMMANDS\n" +
+                    "================\n" +
+                    "!join    Let's you join a game before starting.\n" +
+                    "!start   Use this to start a game once 6+ people have joined.\n" +
+                    "!lynch   Use this during the day to vote for someone to lynch.\n" +
+                    "!kill    Werewolves use at night to kill someone (se in #werewolves channel).\n" +
+                    "!reveal  Seers use at night to reveal a player's identity (use in #seers channel).\n" +
+                    "!reset   End a game and reset everything.\n"
+
 const allEqual = arr => arr.every( v => v === arr[0] )
 
 // Configure logger settings
@@ -62,7 +77,9 @@ bot.on('ready', function (evt) {
 
     bot.sendMessage({
         to: mainChannelID,
-        message: "```Welcome to Werewolves!\nAll users who want to play must type !join.\nWhen everyone has done this, someone can type !start to begin the game.\nYou can reset everything and end the game by typing !reset.```\n"
+        message: "```Welcome to Werewolf Bar Mitzfah!\n\n"+ 
+                 helpMessage + "\n" +
+                 "Type !help at any time to bring up the list of commands or to see the rules.```\n"
     });     
 
 });
@@ -75,11 +92,17 @@ bot.on('message', function (user, userID, channelID, message, evt) {
        
         args = args.splice(1);
         switch(cmd) {
+            case 'help':
+                bot.sendMessage({
+                    to: channelID,
+                    message: "```" + helpMessage + "```"
+                });      
+                break;          
             case 'join':
                 if (channelID == mainChannelID) {
                     if (!doesPlayerExist(userID)) {
                         players.push(new Player(user, userID));
-                        bot.addToRole({"serverID": serverID, "userID": userID, "roleID": playerRoleID});
+                        addRole(userID, playerRoleID);
                     }
                     bot.sendMessage({
                         to: channelID,
@@ -178,6 +201,7 @@ function generatePlayersList() {
 }
 
 function startGame(channelID, message) {
+    unmuteEveryone();
     gameActive = true;
     while (players.length > minRoles.length) { // adds more villagers to the game if there are more than 5 players
         minRoles.push("villager");
@@ -205,12 +229,12 @@ function assignRoles(channelID, message) {
             seer = new Seer(player.user, player.UserID);
             players[i] = seer;
             messageContent = "```You are a seer! Use the seer channel to reveal a player's identity once per round.```";
-            bot.addToRole({"serverID": serverID, "userID": player.userID, "roleID": seerRoleID});
+            addRole(player.userID, seerRoleID);
         } else if (role == "werewolf") {
             var werewolf = new Werewolf(player.user, player.UserID);
             players[i] = werewolf;
             messageContent = "```You are a werewolf! Use the werewolves channel to talk to the other werewolves.```";
-            bot.addToRole({"serverID": serverID, "userID": player.userID, "roleID": werewolfRoleID});
+            addRole(player.userID, werewolfRoleID);
         } else {
             player.role = "villager";
             messageContent = "```You are a villager!```";
@@ -283,6 +307,7 @@ function firstNight() {
     day = false;
     firstNightRound = true;
     seer.votedReveal = false; // seer needs to vote now
+    muteEveryone();
 }
 
 function newNight() {
@@ -290,6 +315,7 @@ function newNight() {
     firstNightRound = false;
     killVotes = [];
     newDead = [];
+    muteEveryone();
 
     for (var i = 0; i < players.length; i++) { // the seer and werewolves get turns
         var player = players[i];
@@ -312,6 +338,7 @@ function newDay() {
     firstNightRound = false;
     lynchVotes = [];
     var whoDiedMessage = "";
+    unmuteEveryone();
 
     if (newDead.length == 0) {
         whoDiedMessage += "Nobody";
@@ -321,7 +348,7 @@ function newDay() {
             var person = newDead[i];
             person.alive = false;
             whoDiedMessage += (person.user + " ");
-            bot.addToRole({"serverID": serverID, "userID": person.userID, "roleID": deadPlayerRoleID});
+            addRole(person.userID, deadPlayerRoleID);
         }
     }
     whoDiedMessage += " died during the night.\n";
@@ -502,7 +529,7 @@ class Player {
                         for (var i = 0; i < playersToLynch.length; i++) {
                             var player = playersToLynch[i];
                             player.alive = false;
-                            bot.addToRole({"serverID": serverID, "userID": player.userID, "roleID": deadPlayerRoleID});
+                            addRole(player.userID, deadPlayerRoleID);
                             bot.sendMessage({
                                 to: mainChannelID,
                                 message: "```" + player.user + " is dead.```\n"
@@ -649,7 +676,7 @@ class Seer extends Player {
                         message: "```" + player.user + " is a " + player.getRole() + ".```\n"
                     });
                     this.votedReveal = true;
-                    if ((this.votedReveal || !seer.alive) && (werewolvesDoneVoting() || firstNightRound)) { //fix the werewolvesTurn variable, needs to check all werewolves' turns
+                    if ((this.votedReveal || !seer.alive) && (werewolvesDoneVoting() || firstNightRound)) { 
                         if (!checkIfGameOver()) {
                             newDay();
                         }
@@ -706,4 +733,37 @@ function setRoleIDVariables() {
         }
     }
 
+}
+
+
+function muteEveryone() {
+    var users = bot.users;
+    for (var key in users) {
+        if (users.hasOwnProperty(key)) {
+            bot.mute({
+                serverID: serverID,
+                userID: users[key]["id"]
+            });
+        }
+    }
+}
+
+function unmuteEveryone() {
+    var users = bot.users;
+    for (var key in users) {
+        if (users.hasOwnProperty(key)) {
+            bot.unmute({
+                serverID: serverID,
+                userID: users[key]["id"]
+            });
+        }
+    }
+}
+
+function addRole(userID, roleID) {
+    bot.addToRole({
+        serverID: serverID,
+        userID: userID,
+        roleID: roleID
+    });    
 }
