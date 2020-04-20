@@ -403,7 +403,7 @@ function numberOfActiveVillagers() {
 }
 
 function checkIfGameOver() {
-    if (numberOfActiveWerewolves() >= numberOfActiveVillagers()) {
+    if (numberOfActiveWerewolves() >= numberOfActiveVillagers()) { // the number of werewolves is equal to or greater than the number of villagers
         bot.sendMessage({
             to: mainChannelID,
             message: "```Game over. Werewolves win!```\n"
@@ -412,7 +412,7 @@ function checkIfGameOver() {
         reset();
         return true;
     }
-    else if (!numberOfActiveWerewolves()) {
+    else if (!numberOfActiveWerewolves()) { // all werewolves are dead
         bot.sendMessage({
             to: mainChannelID,
             message: "```Game over. Villagers win!```\n"
@@ -532,6 +532,14 @@ class Werewolf extends Player {
             return;                         
         }
 
+        if (!this.alive) {
+            bot.sendMessage({
+                to: werewolvesChannelID,
+                message: "```"+ this.user + ", you are dead. You can't vote.```\n"
+            }); 
+            return;  
+        }
+
         if (!this.votedKill) { // this werewolf hasn't voted yet
             if (this.user == playerChoice) { // check to make sure not voting for themselves 
                 bot.sendMessage({
@@ -558,7 +566,7 @@ class Werewolf extends Player {
                                     message: "```You have decided to kill: " + player.user + ".```\n"
                                 }); 
                                 newDead.push(player);
-                                if (seer.votedReveal && werewolvesDoneVoting()) {
+                                if ((seer.votedReveal || !seer.alive) && werewolvesDoneVoting()) {
                                     newDay();
                                 }  
                             } else {
@@ -578,13 +586,7 @@ class Werewolf extends Player {
                 }
                 return;
             }
-        } else if (!werewolf.alive) {
-            bot.sendMessage({
-                to: werewolvesChannelID,
-                message: "```"+ werewolf.user + ", you are dead. You can't vote.```\n"
-            });   
-        }
-        else {
+        } else {
             bot.sendMessage({
                 to: werewolvesChannelID,
                 message: "```"+ werewolf.user + ", you have already voted.```\n"
@@ -634,7 +636,7 @@ class Seer extends Player {
                         message: "```" + player.user + " is a " + player.getRole() + ".```\n"
                     });
                     this.votedReveal = true;
-                    if (this.votedReveal && (werewolvesDoneVoting() || firstNightRound)) { //fix the werewolvesTurn variable, needs to check all werewolves' turns
+                    if ((this.votedReveal || !seer.alive) && (werewolvesDoneVoting() || firstNightRound)) { //fix the werewolvesTurn variable, needs to check all werewolves' turns
                         if (!checkIfGameOver()) {
                             newDay();
                         }
