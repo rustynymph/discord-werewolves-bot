@@ -33,15 +33,17 @@ var helpMessage = "HOW TO PLAY\n" +
                     "The game begins with a night phase and the seer gets to choose to reveal a player's identity. \n" +
                     "During the day ALL villagers need to vote for who to lynch by typing !lynch player_name. The player with the highest number of votes gets lynched. If there is a tie, the players tied for the highest number of votes all get lynched.\n" +
                     "During each night except the first one, the werewolves vote on who to kill.\n" +
-                    "The villagers win when all of the werewolves are dead. The werewolves win when the number of werewolves is equal to or exceeds the number of villagers.\n\n" +
+                    "The villagers win when all of the werewolves are dead. The werewolves win when the number of werewolves is equal to or exceeds the number of villagers.\n\n\n" +
                     "LIST OF COMMANDS\n" +
                     "================\n" +
-                    "!join    Let's you join a game before starting.\n" +
-                    "!start   Use this to start a game once 6+ people have joined.\n" +
-                    "!lynch   Use this during the day to vote for someone to lynch.\n" +
-                    "!kill    Werewolves use at night to kill someone (se in #werewolves channel).\n" +
-                    "!reveal  Seers use at night to reveal a player's identity (use in #seers channel).\n" +
-                    "!reset   End a game and reset everything.\n"
+                    "!join                 Let's you join a game before starting.\n" +
+                    "!start                Use this to start a game once 6+ people have joined.\n" +
+                    "!lynch player_name    Use this during the day to vote for someone to lynch.\n" +
+                    "!kill player_name     Use in #werewolves channel. Vote which player to kill.\n" +
+                    "!reveal player_name   Use in #seers channel. Reveals a player's identity.\n" +
+                    "!reset                End a game and reset everything.\n" +
+                    "!help                 Use at any time to see the rules and commands.\n" +
+                    "* NOTE: Replace 'player_name' with the username of the player you want to perform the action on.\n\n"
 
 const allEqual = arr => arr.every( v => v === arr[0] )
 
@@ -77,9 +79,7 @@ bot.on('ready', function (evt) {
 
     bot.sendMessage({
         to: mainChannelID,
-        message: "```Welcome to Werewolf Bar Mitzfah!\n\n"+ 
-                 helpMessage + "\n" +
-                 "Type !help at any time to bring up the list of commands or to see the rules.```\n"
+        message: "```Welcome to Werewolf Bar Mitzfah!\n\n\n"+ helpMessage + "```\n"
     });     
 
 });
@@ -264,7 +264,8 @@ function assignRoles(channelID, message) {
                  "You are also a villager, but each night in the #seers channel you can choose to reveal the identity of someone using: !reveal user_name\n\n" +
                  "Each night the seer can reveal someone's role, the werewolves will kill someone. During the day, all players will vote who gets lynched by typing !lynch user_name in the #general channel.\n" +
                  "The villagers win when all the werewolves are dead, the werewolves win when they outnumber the villagers.\n\n" +
-                 "Right now, seer --- please use the #seers channel to reveal someone's identity." +
+                 "Seers and werewolves --- be careful not to type your special commands in the #general channel at risk of revealing your identity!\n\n\n" +
+                 "Right now, seer --- please use the #seers channel to reveal someone's identity with !reveal player_name." +
                  "```\n"
     });
     firstNight();
