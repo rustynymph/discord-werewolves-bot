@@ -103,6 +103,9 @@ bot.on('message', function (user, userID, channelID, message, evt) {
             case 'reset':
                 if (channelID == mainChannelID) reset();
                 break;
+            case 'clear':
+                if (channelID == mainChannelID) clear();
+                break;
             case 'kill': // werewolves, werewolves have to agree 
                 if (channelID == werewolvesChannelID) {
                     var werewolf = findPlayerByName(user); 
@@ -178,6 +181,15 @@ function startGame(channelID, message) {
     firstNight();
 }
 
+function clear() {
+    var users = bot.users;
+    for (var key in users) {
+        if (users.hasOwnProperty(key)) {
+            resetDiscordRoles(users[key]["id"]);
+        }
+    }
+}
+
 function assignRoles(channelID, message) {
     for (var i = 0; i < players.length; i++) {
         var player = players[i];
@@ -241,23 +253,30 @@ function shuffle(array) {
     return array;
   }
 
+function resetDiscordRoles(id) {
+    var roles = [playerRoleID, deadPlayerRoleID, seerRoleID, werewolfRoleID];
+    var serverid = "701486922798989312";
+    for (var i = 0; i < roles.length; i++) {
+        bot.removeFromRole({
+            serverID: serverid,
+            roleID: roles[i],
+            userID: id,
+        });
+    }
+}
+
 function reset() {
-    for (var i = 0; i < players.length; i++) {
-        bot.removeFromRole({"serverID": "701486922798989312", "userID": players[i].userID, "roleID": playerRoleID});
-        bot.removeFromRole({"serverID": "701486922798989312", "userID": players[i].userID, "roleID": deadPlayerRoleID});
-        bot.removeFromRole({"serverID": "701486922798989312", "userID": players[i].userID, "roleID": seerRoleID});
-        bot.removeFromRole({"serverID": "701486922798989312", "userID": players[i].userID, "roleID": werewolfRoleID});
+    var users = bot.users;
+    for (var key in users) {
+        if (users.hasOwnProperty(key)) {
+            resetDiscordRoles(users[key]["id"]);
+        }
     }
 
     players = [];
-    seers = [];
     seer = null;
-    werewolves = [];
     killVotes = [];
     lynchVotes = [];
-    seerTurn = false;
-    werewolvesTurn = false;
-    villagersTurn = false;
     gameActive = false;
 
     bot.sendMessage({
