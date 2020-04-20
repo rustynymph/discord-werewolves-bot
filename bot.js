@@ -125,7 +125,7 @@ bot.on('message', function (user, userID, channelID, message, evt) {
                         if (user.toLowerCase() == playerName.toLowerCase()) { // check to make sure not voting for themselves 
                             bot.sendMessage({
                                 to: werewolvesChannelID,
-                                message: "```You can't vote for yourself.```\n"
+                                message: "```"+ werewolf.user + ", you can't vote for yourself.```\n"
                             });     
                             break;                      
                         } else {
@@ -134,7 +134,7 @@ bot.on('message', function (user, userID, channelID, message, evt) {
                                 if ((player.role == "werewolf") || (!player.alive)) {
                                     bot.sendMessage({
                                         to: werewolvesChannelID,
-                                        message: "```You must choose a player that is alive, and not a werewolf.```\n"
+                                        message: "```"+ werewolf.user + ", you must choose a player that is alive, and not a werewolf.```\n"
                                     });                                   
                                 } else {
                                     killVotes.push(player)
@@ -163,15 +163,21 @@ bot.on('message', function (user, userID, channelID, message, evt) {
                             } else { // probably tryped player name wrong
                                 bot.sendMessage({
                                     to: werewolvesChannelID,
-                                    message: "```Player not found.```\n"
+                                    message: "```"+ werewolf.user + ", the player whose name you typed can't be found.```\n"
                                 });                                 
                             }
                             break;
                         }
-                    } else {
+                    } else if (!werewolf.alive) {
                         bot.sendMessage({
                             to: werewolvesChannelID,
-                            message: '```You have already voted.```\n'
+                            message: "```"+ werewolf.user + ", you are dead. You can't vote.```\n"
+                        });   
+                    }
+                    else {
+                        bot.sendMessage({
+                            to: werewolvesChannelID,
+                            message: "```"+ werewolf.user + ", you have already voted.```\n"
                         });                             
                     }              
                     
@@ -192,13 +198,13 @@ bot.on('message', function (user, userID, channelID, message, evt) {
                         if (user.toLowerCase() == playerName.toLowerCase()) {    
                             bot.sendMessage({
                                 to: mainChannelID,
-                                message: '```You cannot vote for yourself.```\n'
+                                message: "```"+ player.user + ", you can't vote for yourself.```\n"
                             });  
                         } else if (playerVote) {
                             if (!playerVote.alive) {
                                 bot.sendMessage({
                                     to: mainChannelID,
-                                    message: "```You can't vote for a player that is dead.```\n"
+                                    message: "```"+ player.user + ", you can't vote for a player that is already dead.```\n"
                                 });                                     
                             } else {
                                 lynchVotes.push(playerVote);
@@ -222,13 +228,19 @@ bot.on('message', function (user, userID, channelID, message, evt) {
                         } else {
                             bot.sendMessage({
                                 to: mainChannelID,
-                                message: '```Player not found.```\n'
+                                message: "```"+ player.user + ", the name of the player you typed was not found.```\n"
                             });                              
                         }
-                } else {
+                } else if (!player.alive) {
+                        bot.sendMessage({
+                            to: mainChannelID,
+                            message: "```"+ player.user + ", you are dead. You can't vote.```\n"
+                        });                        
+                    }
+                else { // player voted & is alive
                     bot.sendMessage({
                         to: mainChannelID,
-                        message: '```You have already voted.```\n'
+                        message: "```"+ player.user + ", you have already voted.```\n"
                     });                       
                 }
             }
@@ -241,6 +253,14 @@ bot.on('message', function (user, userID, channelID, message, evt) {
                         bot.sendMessage({
                             to: seersChannelID,
                             message: "```You have already revealed someone this round.```\n"
+                        });                          
+                        break;
+                    }
+
+                    if (!findPlayerByName(user).alive) {
+                        bot.sendMessage({
+                            to: seersChannelID,
+                            message: "```You are dead.```\n"
                         });                          
                         break;
                     }
@@ -291,6 +311,10 @@ bot.on('message', function (user, userID, channelID, message, evt) {
                 break;
          }
      }
+});
+
+bot.on('disconnect', function(errMsg, code) {
+    reset();
 });
 
 function doesPlayerExist(userID) { // so users can't join multiple times
@@ -372,7 +396,7 @@ function assignRoles(channelID, message) {
     bot.sendMessage({
         to: mainChannelID,
         message: "```" +
-                 "You have started a new game!\n\n" +
+                 "You have started a new game! Check your DMs for a message from the bot telling you what your role is.\n\n" +
                  "Werewolves\n" + "==========" + "\n" +
                  "Your job is to remain undetected by the villagers. You can use the #werewolves channel to talk to the other werewolves. Each night you will have to vote unanimously on who to kill. You do so by typing !kill user_name of the person you want to kill in the #werewolves channel.\n\n" +
                  "Villagers\n" + "==========" + "\n" + 
@@ -402,11 +426,10 @@ function shuffle(array) {
 
 function reset() {
     for (var i = 0; i < players.length; i++) {
-        var player = players[i];
-        bot.removeFromRole({"serverID": "701486922798989312", "userID": player.userID, "roleID": playerRoleID});
-        bot.removeFromRole({"serverID": "701486922798989312", "userID": player.userID, "roleID": deadPlayerRoleID});
-        bot.removeFromRole({"serverID": "701486922798989312", "userID": player.userID, "roleID": seerRoleID});
-        bot.removeFromRole({"serverID": "701486922798989312", "userID": player.userID, "roleID": werewolfRoleID});
+        bot.removeFromRole({"serverID": "701486922798989312", "userID": players[i].userID, "roleID": playerRoleID});
+        bot.removeFromRole({"serverID": "701486922798989312", "userID": players[i].userID, "roleID": deadPlayerRoleID});
+        bot.removeFromRole({"serverID": "701486922798989312", "userID": players[i].userID, "roleID": seerRoleID});
+        bot.removeFromRole({"serverID": "701486922798989312", "userID": players[i].userID, "roleID": werewolfRoleID});
     }
 
     bot.sendMessage({
@@ -546,7 +569,7 @@ function numberOfActiveWerewolves() {
     var count = 0;  
     for (var i = 0; i < players.length; i++) {
         var player = players[i];
-        if (player.alive && (player.role == "werewolf")) {
+        if ((player.role == "werewolf") && player.alive) {
             count += 1;
         }
     }
@@ -557,7 +580,7 @@ function numberOfActiveVillagers() {
     var count = 0;  
     for (var i = 0; i < players.length; i++) {
         var player = players[i];
-        if (player.alive && (player.role != "werewolf")) {
+        if ((player.role != "werewolf") && player.alive) {
             count += 1;
         }
     }
@@ -565,7 +588,7 @@ function numberOfActiveVillagers() {
 }
 
 function checkIfGameOver() {
-    if (numberOfActiveWerewolves() > numberOfActiveVillagers()) {
+    if (numberOfActiveWerewolves() >= numberOfActiveVillagers()) {
         bot.sendMessage({
             to: mainChannelID,
             message: "```Game over. Werewolves win!```\n"
