@@ -105,14 +105,27 @@ bot.on('message', function (user, userID, channelID, message, evt) {
                 });      
                 break;          
             case 'join':
-                if (channelID == mainChannelID) {
-                    if (!doesPlayerExist(userID)) {
-                        players.push(new Player(user, userID));
-                        addRole(userID, playerRoleID);
+                if (!gameActive) {
+                    if (channelID == mainChannelID) {
+                        if (!doesPlayerExist(userID)) {
+                            players.push(new Player(user, userID));
+                            addPlayerRole(userID);
+                            //addRole(userID, playerRoleID);
+                        } else {
+                            bot.sendMessage({
+                                to: channelID,
+                                message: "```"+ user + ", you have already joined.```\n"
+                            });                            
+                        }
+                        bot.sendMessage({
+                            to: channelID,
+                            message: "```Players that have joined: \n"  + generatePlayersList() + "```\n"
+                        });
                     }
+                } else {
                     bot.sendMessage({
                         to: channelID,
-                        message: "```Players that have joined: \n"  + generatePlayersList() + "```\n"
+                        message: "```There is currently an ongoing game, you must wait to join next game.```\n"
                     });
                 }
                 break;
@@ -145,6 +158,7 @@ bot.on('message', function (user, userID, channelID, message, evt) {
                 if (channelID == mainChannelID) clear();
                 break;
             case 'kill': // werewolves, werewolves have to agree 
+                if (!gameActive) break;
                 if (channelID == werewolvesChannelID) {
                     var werewolf = findPlayerByName(user); 
                     werewolf.kill(args[0]);              
@@ -156,12 +170,19 @@ bot.on('message', function (user, userID, channelID, message, evt) {
                 }       
                 break;
             case 'lynch': // everyone gets to vote to lynch, majority wins
+                if (!gameActive) break;
                 if (channelID == mainChannelID) { // lynch voting happens publicy
                     var player = findPlayerByName(user);
                     player.lynch(args[0]);
-            }
+                } else {
+                    bot.sendMessage({
+                        to: channelID,
+                        message: '```Lynching happens publicly, please use the #general channel.```\n'
+                    });  
+                }
                 break;
             case 'reveal': // seers
+                if (!gameActive) break;
                 if (channelID == seersChannelID) {
                     // might need way to check if seer, but can do this with seer channel permissions i guess
 
@@ -240,20 +261,27 @@ function assignRoles(channelID, message) {
             seer = new Seer(player.user, player.UserID);
             players[i] = seer;
             messageContent = "```You are a seer! Use the seer channel to reveal a player's identity once per round.```";
+            //setTimeout(() => {addRole(player.userID, seerRoleID)}, 5000);
+            //setTimeout(() => {addSeerRole(player.userID)}, 5000);
             addRole(player.userID, seerRoleID);
         } else if (role == "werewolf") {
             var werewolf = new Werewolf(player.user, player.UserID);
             players[i] = werewolf;
             messageContent = "```You are a werewolf! Use the werewolves channel to talk to the other werewolves.```";
+            
+            //setTimeout(() => {addRole(player.userID, werewolfRoleID)}, 5000);
+            //setTimeout(() => {addWerewolfRole(player.userID)}, 5000);
+            
+            //addWerewolfRole(player.userID);
             addRole(player.userID, werewolfRoleID);
         } else {
             player.role = "villager";
             messageContent = "```You are a villager!```";
         }
-        bot.sendMessage({
+        /*bot.sendMessage({ // had to remove because of rate limiting
             to: player.userID,
             message: messageContent
-        });    
+        });*/    
     }
 
     // remove eventually
@@ -266,7 +294,8 @@ function assignRoles(channelID, message) {
     bot.sendMessage({
         to: mainChannelID,
         message: "```" +
-                 "You have started a new game! Check your DMs for a message from the bot telling you what your role is.\n\n" +
+                //"You have started a new game! Check your DMs for a message from the bot telling you what your role is.\n\n" +
+                 "You have started a new game! Click on your name on the right sidebar to see your role, but DO NOT click on anyone else's!\n\n" +
                  "Werewolves\n" + "==========" + "\n" +
                  "Your job is to remain undetected by the villagers. You can use the #werewolves channel to talk to the other werewolves. Each night you will have to vote unanimously on who to kill. You do so by typing !kill user_name of the person you want to kill in the #werewolves channel.\n\n" +
                  "Villagers\n" + "==========" + "\n" + 
@@ -368,6 +397,7 @@ function newDay() {
             var person = newDead[i];
             person.alive = false;
             whoDiedMessage += (person.user + " ");
+            //addDeadRole(person.userID);
             addRole(person.userID, deadPlayerRoleID);
         }
     }
@@ -484,7 +514,7 @@ function checkIfGameOver() {
     return false;
 }
 
-function werewolvesDoneVoting() {
+function werewolvesEachVoted() {
     var done = true;
     for (var i = 0; i < players.length; i++) {
         var player = players[i];
@@ -492,7 +522,11 @@ function werewolvesDoneVoting() {
             done = false;
         }
     }
-    return done;
+    return done;     
+}
+
+function werewolvesDoneVoting() {
+    return werewolvesEachVoted() && allEqual(killVotes);
 }
 
 
@@ -512,7 +546,14 @@ class Player {
     }
 
     lynch(playerChoice) {
-        var player = findPlayerByName(playerChoice);
+        if (!this.alive) {
+            bot.sendMessage({
+                to: mainChannelID,
+                message: "```"+ this.user + ", you are dead.```\n"
+            });    
+            return;                    
+        }
+
         if (!day) {
             bot.sendMessage({
                 to: mainChannelID,
@@ -521,14 +562,7 @@ class Player {
             return;
         }
 
-        if (!this.alive) {
-            bot.sendMessage({
-                to: mainChannelID,
-                message: "```"+ this.user + ", you are dead. You can't vote.```\n"
-            });    
-            return;                    
-        }
-
+        var player = findPlayerByName(playerChoice);
         if (!this.votedLynch) {
             if (this.user == playerChoice) {    
                 bot.sendMessage({
@@ -549,6 +583,7 @@ class Player {
                         for (var i = 0; i < playersToLynch.length; i++) {
                             var player = playersToLynch[i];
                             player.alive = false;
+                            //addDeadRole(person.userID);
                             addRole(player.userID, deadPlayerRoleID);
                             bot.sendMessage({
                                 to: mainChannelID,
@@ -584,20 +619,20 @@ class Werewolf extends Player {
     }
 
     kill(playerChoice) {
+        if (!this.alive) {
+            bot.sendMessage({
+                to: werewolvesChannelID,
+                message: "```"+ this.user + ", you are dead.```\n"
+            }); 
+            return;  
+        }
+
         if (day || firstNightRound) {
             bot.sendMessage({
                 to: werewolvesChannelID,
                 message: "```You can't vote right now.```\n"
             });    
             return;                         
-        }
-
-        if (!this.alive) {
-            bot.sendMessage({
-                to: werewolvesChannelID,
-                message: "```"+ this.user + ", you are dead. You can't vote.```\n"
-            }); 
-            return;  
         }
 
         if (!this.votedKill) { // this werewolf hasn't voted yet
@@ -618,7 +653,7 @@ class Werewolf extends Player {
                     } else {
                         killVotes.push(player)
                         this.votedKill = true;
-                        if (werewolvesDoneVoting()) {
+                        if (werewolvesEachVoted()) {
                         //if (killVotes.length == numberOfActiveWerewolves()) {
                             if (allEqual(killVotes)) {
                                 bot.sendMessage({
@@ -626,9 +661,12 @@ class Werewolf extends Player {
                                     message: "```You have decided to kill: " + player.user + ".```\n"
                                 }); 
                                 newDead.push(player);
-                                if ((seer.votedReveal || !seer.alive) && werewolvesDoneVoting()) {
-                                    newDay();
-                                }  
+                                //if ((seer.votedReveal || !seer.alive) && werewolvesDoneVoting()) {
+                                if (seer.votedReveal || !seer.alive) {
+                                    if (!checkIfGameOver()) {
+                                        newDay();
+                                    }
+                                }  // if not, wait for seer to finish
                             } else {
                                 werewolfRevote();
                                 bot.sendMessage({
@@ -641,7 +679,7 @@ class Werewolf extends Player {
                 } else { // probably tryped player name wrong
                     bot.sendMessage({
                         to: werewolvesChannelID,
-                        message: "```"+ werewolf.user + ", the player whose name you typed can't be found.```\n"
+                        message: "```"+ this.user + ", the player whose name you typed can't be found.```\n"
                     });                                 
                 }
                 return;
@@ -664,19 +702,18 @@ class Seer extends Player {
     }
 
     reveal(playerChoice) {
-        if (day || this.votedReveal) { // check if it's the seer's turn
+        if (!this.alive) {
             bot.sendMessage({
                 to: seersChannelID,
-                message: "```Seer, it is not your turn.```\n"
+                message: "```Seer, you are dead.```\n"
             });                          
             return;
         }
 
-        //if (!findPlayerByName(user).alive) {
-        if (!this.alive) {
+        if (day || this.votedReveal) { // check if it's the seer's turn
             bot.sendMessage({
                 to: seersChannelID,
-                message: "```Seer, you are dead, you can't reveal anyone.```\n"
+                message: "```Seer, it is not your turn.```\n"
             });                          
             return;
         }
@@ -719,6 +756,66 @@ class Seer extends Player {
         }
     }
 }
+
+/*function addSeerRole(id) {
+    request({
+        url: "https://discordapp.com/api/v6/guilds/"+ serverID +"/members/"+ id,
+        headers: {
+            "User-Agent": "DiscordBot (Custom API request, 1.0)",
+            "Authorization": "Bot "+ auth.token,
+            "Content-Type": "application/json"
+        },
+        method: "PATCH",
+        body: JSON.stringify({roles: [everyoneRoleID, playerRoleID, seerRoleID]})
+    }, function(error, response, body) {
+        logger.info(response.statusCode); // All done. response.statusCode should be 204 on success, 4XX or 5XX on failure.
+    });      
+}
+
+function addWerewolfRole(id) {
+    request({
+        url: "https://discordapp.com/api/v6/guilds/"+ serverID +"/members/"+ id,
+        headers: {
+            "User-Agent": "DiscordBot (Custom API request, 1.0)",
+            "Authorization": "Bot "+ auth.token,
+            "Content-Type": "application/json"
+        },
+        method: "PATCH",
+        body: JSON.stringify({roles: [everyoneRoleID, playerRoleID, werewolfRoleID]})
+    }, function(error, response, body) {
+        logger.info(response.statusCode); // All done. response.statusCode should be 204 on success, 4XX or 5XX on failure.
+    });      
+}*/
+
+function addPlayerRole(id) {
+    request({
+        url: "https://discordapp.com/api/v6/guilds/"+ serverID +"/members/"+ id,
+        headers: {
+            "User-Agent": "DiscordBot (Custom API request, 1.0)",
+            "Authorization": "Bot "+ auth.token,
+            "Content-Type": "application/json"
+        },
+        method: "PATCH",
+        body: JSON.stringify({roles: [everyoneRoleID, playerRoleID]})
+    }, function(error, response, body) {
+        logger.info(response.statusCode); // All done. response.statusCode should be 204 on success, 4XX or 5XX on failure.
+    });   
+}
+
+/*function addDeadRole(id) {
+    request({
+        url: "https://discordapp.com/api/v6/guilds/"+ serverID +"/members/"+ id,
+        headers: {
+            "User-Agent": "DiscordBot (Custom API request, 1.0)",
+            "Authorization": "Bot "+ auth.token,
+            "Content-Type": "application/json"
+        },
+        method: "PATCH",
+        body: JSON.stringify({roles: [everyoneRoleID, playerRoleID, deadPlayerRoleID]})
+    }, function(error, response, body) {
+        logger.info(response.statusCode); // All done. response.statusCode should be 204 on success, 4XX or 5XX on failure.
+    });    
+}*/
 
 function removeRolesRequest(id) {
     request({
